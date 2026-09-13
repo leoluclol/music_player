@@ -6,6 +6,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ClippingConfiguration
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 
@@ -60,16 +61,23 @@ class PlaybackService : MediaSessionService() {
          * Builds a media item for the given [song] so it can be handed to the
          * session's player.
          */
-        fun mediaItemFor(song: Song): MediaItem =
-            MediaItem.Builder()
+        fun mediaItemFor(song: Song): MediaItem {
+            val builder = MediaItem.Builder()
                 .setMediaId(song.id.toString())
                 .setUri(song.uri)
                 .setMediaMetadata(
                     MediaMetadata.Builder()
-                        .setTitle(song.title)
+                        .setTitle(song.displayTitle)
                         .setArtist(song.artist)
                         .build()
                 )
-                .build()
+            if (song.isClip) {
+                val clipping = ClippingConfiguration.Builder()
+                song.startMs?.let { clipping.setStartPositionMs(it) }
+                song.endMs?.let { clipping.setEndPositionMs(it) }
+                builder.setClippingConfiguration(clipping.build())
+            }
+            return builder.build()
+        }
     }
 }

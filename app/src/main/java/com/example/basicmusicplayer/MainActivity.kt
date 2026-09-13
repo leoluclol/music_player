@@ -3,6 +3,7 @@ package com.example.basicmusicplayer
 import android.Manifest
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -48,7 +49,12 @@ class MainActivity : AppCompatActivity() {
 
         nowPlaying = findViewById(R.id.nowPlayingText)
         val songList: RecyclerView = findViewById(R.id.songList)
-        adapter = SongAdapter(songs) { song -> playSong(song) }
+        adapter = SongAdapter(
+            songs,
+            onClick = { song -> playSong(song) },
+            onLongClick = { song -> openClipEditor(song) },
+            onQueue = { song -> enqueue(song) }
+        )
         songList.layoutManager = LinearLayoutManager(this)
         songList.adapter = adapter
 
@@ -67,6 +73,9 @@ class MainActivity : AppCompatActivity() {
             controller?.stop()
             controller?.clearMediaItems()
             nowPlaying.text = getString(R.string.app_name)
+        }
+        findViewById<Button>(R.id.queueButton).setOnClickListener {
+            startActivity(Intent(this, QueueActivity::class.java))
         }
 
         requestPermissionIfNeeded()
@@ -121,6 +130,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun openClipEditor(song: Song) {
+        val intent = Intent(this, ClipActivity::class.java)
+        intent.putExtra(ClipActivity.EXTRA_SONG, song)
+        startActivity(intent)
+    }
+
+    private fun enqueue(song: Song) {
+        val c = controller ?: return
+        c.addMediaItem(PlaybackService.mediaItemFor(song))
+        Toast.makeText(this, R.string.queue_add, Toast.LENGTH_SHORT).show()
+    }
+
     private fun loadSongs() {
         songs.clear()
         val projection = arrayOf(
@@ -149,6 +170,7 @@ class MainActivity : AppCompatActivity() {
                 songs.add(Song(id, title, artist, uri))
             }
         }
+        songs.addAll(ClipStore.load(this))
         adapter.notifyDataSetChanged()
         if (songs.isEmpty()) {
             Toast.makeText(this, R.string.no_songs, Toast.LENGTH_LONG).show()
@@ -161,7 +183,16 @@ class MainActivity : AppCompatActivity() {
         c.setMediaItem(item)
         c.prepare()
         c.play()
-        nowPlaying.text = "${song.title} — ${song.artist}"
+        nowPlaying.text = "${song.displayTitle} — ${song.artist}"
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Clips may have been added/removed while the clip editor was open.
+        if (::adapter.isInitialized) {
+            songs.clear()
+            loadSongs()
+        }
     }
 
     override fun onDestroy() {

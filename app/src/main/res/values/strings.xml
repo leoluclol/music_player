@@ -5,4 +5,23 @@
     <string name="stop">Stop</string>
     <string name="no_songs">No songs found on this device.</string>
     <string name="permission_required">Storage permission is required to read your music.</string>
+    <string name="cover_art">Cover art</string>
+    <string name="queue_add">+Q</string>
+    <string name="queue">Queue</string>
+    <string name="queue_empty">The queue is empty.</string>
+    <string name="queue_clear">Clear queue</string>
+    <string name="clip_title">Create clip</string>
+    <string name="clip_start">Start</string>
+    <string name="clip_end">End</string>
+    <string name="clip_set_start">Set start here</string>
+    <string name="clip_set_end">Set end here</string>
+    <string name="clip_save">Save clip</string>
+    <string name="clip_saved">Clip saved to your library.</string>
+    <string name="clip_delete">Delete clip</string>
+    <string name="clip_deleted">Clip deleted.</string>
+    <string name="clip_play">Preview</string>
+    <string name="clip_name_hint">e.g. Best drop</string>
+    <string name="clip_invalid_range">End must be after start.</string>
+    <string name="clip_need_controller">Player not ready yet, try again.</string>
+    <string name="clip_need_duration">Waiting for the track to load…</string>
 </resources>
