@@ -1,6 +1,9 @@
 package com.example.basicmusicplayer
 
 import android.Manifest
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -11,15 +14,22 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.common.util.concurrent.ListenableFuture
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var player: MusicPlayer
     private lateinit var nowPlaying: TextView
     private lateinit var adapter: SongAdapter
     private val songs = mutableListOf<Song>()
+
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var controller: MediaController? = null
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -30,12 +40,12 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
-        player = MusicPlayer(this)
-        player.onCompletion = { nowPlaying.text = getString(R.string.app_name) }
 
         nowPlaying = findViewById(R.id.nowPlayingText)
         val songList: RecyclerView = findViewById(R.id.songList)
@@ -44,17 +54,57 @@ class MainActivity : AppCompatActivity() {
         songList.adapter = adapter
 
         findViewById<Button>(R.id.playButton).setOnClickListener {
-            if (player.isPlaying) return@setOnClickListener
-            val song = songs.firstOrNull() ?: return@setOnClickListener
-            playSong(song)
+            val c = controller ?: return@setOnClickListener
+            if (c.isPlaying) return@setOnClickListener
+            if (c.mediaItemCount == 0) {
+                val song = songs.firstOrNull() ?: return@setOnClickListener
+                playSong(song)
+            } else {
+                c.play()
+            }
         }
-        findViewById<Button>(R.id.pauseButton).setOnClickListener { player.pause() }
+        findViewById<Button>(R.id.pauseButton).setOnClickListener { controller?.pause() }
         findViewById<Button>(R.id.stopButton).setOnClickListener {
-            player.stop()
+            controller?.stop()
+            controller?.clearMediaItems()
             nowPlaying.text = getString(R.string.app_name)
         }
 
         requestPermissionIfNeeded()
+        requestNotificationPermissionIfNeeded()
+        connectToPlaybackService()
+    }
+
+    private fun connectToPlaybackService() {
+        val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
+        controllerFuture = MediaController.Builder(this, token).buildAsync()
+        controllerFuture?.addListener({
+            controller = controllerFuture?.get()
+            controller?.addListener(playerListener)
+        }, ContextCompat.getMainExecutor(this))
+    }
+
+    private val playerListener = object : Player.Listener {
+        override fun onMediaMetadataChanged(mediaMetadata: androidx.media3.common.MediaMetadata) {
+            val title = mediaMetadata.title?.toString() ?: return
+            val artist = mediaMetadata.artist?.toString().orEmpty()
+            nowPlaying.text = if (artist.isEmpty()) title else "$title — $artist"
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_ENDED) {
+                nowPlaying.text = getString(R.string.app_name)
+            }
+        }
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     private fun requestPermissionIfNeeded() {
@@ -107,12 +157,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun playSong(song: Song) {
-        player.play(song)
+        val c = controller ?: return
+        val item: MediaItem = PlaybackService.mediaItemFor(song)
+        c.setMediaItem(item)
+        c.prepare()
+        c.play()
         nowPlaying.text = "${song.title} — ${song.artist}"
     }
 
+    override fun onStart() {
+        super.onStart()
+        // Start (and keep) the playback service running in the foreground.
+        startService(Intent(this, PlaybackService::class.java))
+    }
+
     override fun onDestroy() {
+        controller?.removeListener(playerListener)
+        controllerFuture?.let { MediaController.releaseFuture(it) }
+        controller = null
         super.onDestroy()
-        player.release()
     }
 }
