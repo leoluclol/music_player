@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Basic Music Player</string>
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="stop">Stop</string>
+    <string name="no_songs">No songs found on this device.</string>
+    <string name="permission_required">Storage permission is required to read your music.</string>
+</resources>
