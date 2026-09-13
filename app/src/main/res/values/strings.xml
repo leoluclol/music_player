@@ -24,4 +24,7 @@
     <string name="clip_invalid_range">End must be after start.</string>
     <string name="clip_need_controller">Player not ready yet, try again.</string>
     <string name="clip_need_duration">Waiting for the track to load…</string>
+    <string name="time_zero">0:00 / 0:00</string>
+    <string name="rewind_10">-10s</string>
+    <string name="forward_10">+10s</string>
 </resources>

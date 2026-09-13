@@ -7,8 +7,11 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.widget.Button
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,8 +28,19 @@ import com.google.common.util.concurrent.ListenableFuture
 class MainActivity : AppCompatActivity() {
 
     private lateinit var nowPlaying: TextView
+    private lateinit var positionSeek: SeekBar
+    private lateinit var positionText: TextView
     private lateinit var adapter: SongAdapter
     private val songs = mutableListOf<Song>()
+
+    private val handler = Handler(Looper.getMainLooper())
+    private var isUserSeeking = false
+    private val positionUpdater = object : Runnable {
+        override fun run() {
+            updatePositionUi()
+            handler.postDelayed(this, POSITION_UPDATE_MS)
+        }
+    }
 
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
@@ -48,6 +62,8 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         nowPlaying = findViewById(R.id.nowPlayingText)
+        positionSeek = findViewById(R.id.positionSeek)
+        positionText = findViewById(R.id.positionText)
         val songList: RecyclerView = findViewById(R.id.songList)
         adapter = SongAdapter(
             songs,
@@ -77,6 +93,29 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.queueButton).setOnClickListener {
             startActivity(Intent(this, QueueActivity::class.java))
         }
+        findViewById<Button>(R.id.rewindButton).setOnClickListener {
+            val c = controller ?: return@setOnClickListener
+            c.seekTo((c.currentPosition - SEEK_STEP_MS).coerceAtLeast(0L))
+        }
+        findViewById<Button>(R.id.forwardButton).setOnClickListener {
+            val c = controller ?: return@setOnClickListener
+            val duration = c.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+            c.seekTo((c.currentPosition + SEEK_STEP_MS).coerceAtMost(duration))
+        }
+        positionSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) positionText.text = formatTime(progress.toLong(), currentDurationMs())
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                isUserSeeking = true
+            }
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                isUserSeeking = false
+                controller?.seekTo(seekBar?.progress?.toLong() ?: 0L)
+            }
+        })
 
         requestPermissionIfNeeded()
         requestNotificationPermissionIfNeeded()
@@ -103,7 +142,34 @@ class MainActivity : AppCompatActivity() {
             if (playbackState == Player.STATE_ENDED) {
                 nowPlaying.text = getString(R.string.app_name)
             }
+            updatePositionUi()
         }
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            updatePositionUi()
+        }
+    }
+
+    private fun currentDurationMs(): Long =
+        controller?.duration?.takeIf { it > 0 } ?: 0L
+
+    private fun updatePositionUi() {
+        val c = controller ?: return
+        val duration = currentDurationMs()
+        positionSeek.max = duration.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        if (!isUserSeeking) {
+            val position = c.currentPosition.coerceAtLeast(0L)
+            positionSeek.progress = position.coerceAtMost(positionSeek.max.toLong()).toInt()
+            positionText.text = formatTime(position, duration)
+        }
+    }
+
+    private fun formatTime(positionMs: Long, durationMs: Long): String =
+        "${formatMs(positionMs)} / ${formatMs(durationMs)}"
+
+    private fun formatMs(ms: Long): String {
+        val totalSeconds = (ms / 1000).coerceAtLeast(0L)
+        return "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
     }
 
     private fun requestNotificationPermissionIfNeeded() {
@@ -193,12 +259,24 @@ class MainActivity : AppCompatActivity() {
             songs.clear()
             loadSongs()
         }
+        handler.post(positionUpdater)
+    }
+
+    override fun onPause() {
+        handler.removeCallbacks(positionUpdater)
+        super.onPause()
     }
 
     override fun onDestroy() {
+        handler.removeCallbacks(positionUpdater)
         controller?.removeListener(playerListener)
         controllerFuture?.let { MediaController.releaseFuture(it) }
         controller = null
         super.onDestroy()
+    }
+
+    companion object {
+        private const val POSITION_UPDATE_MS = 500L
+        private const val SEEK_STEP_MS = 10_000L
     }
 }
