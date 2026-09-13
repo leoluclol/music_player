@@ -3,7 +3,6 @@ package com.example.basicmusicplayer
 import android.Manifest
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -163,12 +162,6 @@ class MainActivity : AppCompatActivity() {
         c.prepare()
         c.play()
         nowPlaying.text = "${song.title} — ${song.artist}"
-    }
-
-    override fun onStart() {
-        super.onStart()
-        // Start (and keep) the playback service running in the foreground.
-        startService(Intent(this, PlaybackService::class.java))
     }
 
     override fun onDestroy() {
